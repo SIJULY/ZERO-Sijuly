@@ -1,8 +1,13 @@
 # ZERO-Sijuly
 
-ZERO-Sijuly 是一个用于 Cloudflare Zero Trust / WARP Teams 的本地配置生成脚本。
+ZERO-Sijuly 是一个用于 Cloudflare Zero Trust / WARP Teams 的本地工具脚本。
 
-脚本会通过 Cloudflare Access 邮箱验证码登录，自动注册 WARP 设备，并输出多个客户端可用的 WireGuard 配置。
+脚本运行后可以选择：
+
+- 提取 Cloudflare Zero Trust / WARP Teams 节点信息。
+- 扫描并优选 Cloudflare WARP Endpoint IP。
+
+节点提取功能会通过 Cloudflare Access 邮箱验证码登录，自动注册 WARP 设备，并输出多个客户端可用的 WireGuard 配置。
 
 支持输出：
 
@@ -26,6 +31,9 @@ ZERO-Sijuly 是一个用于 Cloudflare Zero Trust / WARP Teams 的本地配置�
 - 自动注册 Cloudflare WARP Teams 设备。
 - 自动输出 Surge、Stash、Loon、小火箭等配置。
 - 自动保存 Cloudflare 注册返回 JSON 到 `warp-account-debug.json`，方便排查问题。
+- 内置 Cloudflare WARP IP 优选扫描器。
+- 通过 TCP Ping 测试 WARP Endpoint 连通性和延迟。
+- 自动输出延迟最低的前 10 个可用 Endpoint。
 
 ---
 
@@ -85,7 +93,24 @@ python3 ZERO-Sijuly.py
 
 ## 使用方法
 
-运行脚本后，按提示输入：
+运行脚本后，会先显示功能菜单：
+
+```text
+============================================================
+ 🚀 ZERO-Sijuly 工具箱
+============================================================
+1. 提取 Cloudflare Zero Trust / WARP 节点信息
+2. Cloudflare WARP IP 优选
+0. 退出
+============================================================
+>>> 请选择功能 [1/2/0]:
+```
+
+---
+
+### 1. 提取 WARP 节点信息
+
+选择 `1` 后，按提示输入：
 
 ```text
 >>> 请输入 Organization (Team Name):
@@ -104,14 +129,44 @@ python3 ZERO-Sijuly.py
 
 ---
 
+### 2. Cloudflare WARP IP 优选
+
+选择 `2` 后，脚本会从内置的 Cloudflare WARP IPv4 地址段中随机抽取 IP，并通过 TCP 连接测试 `2408` 端口延迟。
+
+默认测试参数：
+
+```text
+测试端口：2408
+超时时间：1.0 秒
+随机抽样：100 个 IP
+并发线程：50
+```
+
+扫描完成后会输出延迟最低的前 10 个 Endpoint，例如：
+
+```text
+[1] 延迟:  12.0 ms  =>  endpoint = 188.114.97.170:2408
+[2] 延迟:  12.2 ms  =>  endpoint = 162.159.192.2:2408
+```
+
+你可以把优选出来的 Endpoint 替换到 Surge、Loon、小火箭等 WireGuard 配置中的 endpoint/server 字段。
+
+---
+
 ## 输出内容
 
-脚本成功运行后，会输出以下几类配置：
+选择节点提取功能并成功运行后，会输出以下几类配置：
 
 - Surge：`[Proxy]` 节点行和 `[WireGuard ZERO]` 配置段。
 - Stash / Mihomo / Clash Meta：可放入 `proxies:` 下的 WireGuard YAML 节点。
 - Loon：可放入 `[Proxy]` 段的一行 WireGuard 节点。
 - Shadowrocket / 小火箭：`[Proxy]` 节点行和 `[WireGuard ZERO]` 配置段。
+
+选择 IP 优选功能并成功运行后，会输出：
+
+- 可用 WARP Endpoint 列表。
+- 每个 Endpoint 的 TCP 握手延迟。
+- 默认显示延迟最低的前 10 个结果。
 
 ---
 
@@ -172,6 +227,23 @@ sudo python3 -m playwright install-deps chromium
 - Cloudflare 修改了登录页面结构。
 
 可以换网络、确认授权邮箱、重新运行脚本后再试。
+
+### 6. IP 优选没有结果怎么办？
+
+可能原因：
+
+- 当前网络无法连接 Cloudflare WARP 的 `2408` 端口。
+- 本地防火墙、运营商或网络策略阻断了相关 IP 段。
+- 默认超时时间 `1.0` 秒过短。
+- 随机抽样的 IP 在当前网络下不可用。
+
+可以稍后重新扫描，或根据需要修改脚本中的：
+
+```python
+TIMEOUT = 1.0
+SAMPLE_SIZE = 100
+MAX_WORKERS = 50
+```
 
 ---
 

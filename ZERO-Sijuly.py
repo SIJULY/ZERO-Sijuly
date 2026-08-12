@@ -14,6 +14,11 @@ import subprocess
 import platform
 import importlib.util
 import importlib
+import socket
+import time
+import ipaddress
+import random
+import concurrent.futures
 
 
 # ==========================================
@@ -334,9 +339,94 @@ def client_id_to_reserved(client_id):
 
 
 # ==========================================
-# 4. 核心执行流程
+# 4. Cloudflare WARP IP 优选扫描
 # ==========================================
-def main():
+# Cloudflare 官方已知的 WARP IPv4 地址段
+CF_WARP_IPV4_CIDRS = [
+    "162.159.192.0/24",
+    "162.159.193.0/24",
+    "162.159.195.0/24",
+    "188.114.96.0/24",
+    "188.114.97.0/24",
+]
+
+# 测试参数配置
+TEST_PORT = 2408      # WARP 默认端口
+TIMEOUT = 1.0         # 超时时间(秒)，越低要求越苛刻
+SAMPLE_SIZE = 100     # 每次随机抽取的 IP 数量（全扫太慢，随机抽样最快）
+MAX_WORKERS = 50      # 并发线程数
+
+
+def get_random_ips(cidrs, count):
+    """从给定的 CIDR 列表中随机抽取指定数量的 IP。"""
+    all_ips = []
+    for cidr in cidrs:
+        network = ipaddress.ip_network(cidr)
+        # 排除网络地址和广播地址
+        all_ips.extend([str(ip) for ip in network.hosts()])
+
+    if count > len(all_ips):
+        count = len(all_ips)
+    return random.sample(all_ips, count)
+
+
+def tcp_ping(ip, port, timeout):
+    """通过 TCP 握手测试 IP 延迟。"""
+    start_time = time.perf_counter()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect((ip, port))
+        latency = (time.perf_counter() - start_time) * 1000
+        return ip, latency
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return ip, -1
+    finally:
+        sock.close()
+
+
+def run_warp_ip_selector():
+    """Cloudflare WARP 优选 IP 扫描入口。"""
+    print("=" * 50)
+    print(" 🚀 Cloudflare WARP 优选 IP 扫描器 (TCP Ping)")
+    print("=" * 50)
+
+    print(f"\n📦 正在从 WARP IP 库中随机抽取 {SAMPLE_SIZE} 个 IP 进行连通性测试...")
+    test_ips = get_random_ips(CF_WARP_IPV4_CIDRS, SAMPLE_SIZE)
+
+    results = []
+    print(f"⚡ 启动 {MAX_WORKERS} 个并发线程扫描，超时标准: {TIMEOUT}s...")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_ip = {executor.submit(tcp_ping, ip, TEST_PORT, TIMEOUT): ip for ip in test_ips}
+
+        for future in concurrent.futures.as_completed(future_to_ip):
+            ip, latency = future.result()
+            if latency != -1:
+                results.append((ip, latency))
+
+    results.sort(key=lambda x: x[1])
+
+    print("\n" + "=" * 20 + " 🏆 优选结果 " + "=" * 20)
+    if not results:
+        print("❌ 扫描完成，但在当前网络下未找到存活的 IP。建议增加超时时间或稍后再试。")
+        print("💡 也有可能是您的当地运营商彻底阻断了 Cloudflare WARP IP 段。")
+    else:
+        print(f"✅ 成功找到 {len(results)} 个存活 IP！(已按延迟排序)")
+        print("\n👇 可以直接复制以下 Endpoint 填入您的配置中 👇\n")
+
+        top_n = min(10, len(results))
+        for i in range(top_n):
+            ip, latency = results[i]
+            print(f"[{i + 1}] 延迟: {latency:5.1f} ms  =>  endpoint = {ip}:{TEST_PORT}")
+
+    print("\n" + "=" * 52)
+
+
+# ==========================================
+# 5. WARP 节点信息提取流程
+# ==========================================
+def extract_warp_node_info():
     print("=" * 60)
     print(" 🚀 CF Zero Trust 本地后台静默全自动版")
     print("=" * 60 + "\n")
@@ -465,9 +555,34 @@ def main():
     print("\n" + "=" * 62)
 
 
+# ==========================================
+# 6. 主菜单
+# ==========================================
+def main():
+    print("=" * 60)
+    print(" 🚀 ZERO-Sijuly 工具箱")
+    print("=" * 60)
+    print("1. 提取 Cloudflare Zero Trust / WARP 节点信息")
+    print("2. Cloudflare WARP IP 优选")
+    print("0. 退出")
+    print("=" * 60)
+
+    choice = input(">>> 请选择功能 [1/2/0]: ").strip()
+
+    if choice == "1":
+        global sync_playwright
+        sync_playwright = ensure_runtime_dependencies()
+        extract_warp_node_info()
+    elif choice == "2":
+        run_warp_ip_selector()
+    elif choice == "0":
+        print("已退出。")
+    else:
+        print("❌ 无效选择，请重新运行脚本并输入 1、2 或 0。")
+
+
 if __name__ == "__main__":
     try:
-        sync_playwright = ensure_runtime_dependencies()
         main()
     except KeyboardInterrupt:
         print("\n已取消。")
