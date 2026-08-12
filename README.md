@@ -57,13 +57,13 @@ python3 --version
 ### macOS / Linux
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SIJULY/ZERO-Sijuly/main/ZERO-Sijuly.py)
+curl -fsSL https://raw.githubusercontent.com/SIJULY/ZERO-Sijuly/main/ZERO-Sijuly.py -o ZERO-Sijuly.py && python3 ZERO-Sijuly.py
 ```
 
 备用命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SIJULY/ZERO-Sijuly/main/ZERO-Sijuly.py -o ZERO-Sijuly.py && python3 ZERO-Sijuly.py
+python3 <(curl -fsSL https://raw.githubusercontent.com/SIJULY/ZERO-Sijuly/main/ZERO-Sijuly.py)
 ```
 
 ### macOS Homebrew Python
